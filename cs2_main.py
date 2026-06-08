@@ -9,9 +9,15 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 load_dotenv()
-BOT_TOKEN = ("8811872623:AAES47Shvlyo4oCVwNtPSNeH8aMg-DLujPY")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 CDN = "https://d3pnc3zdmk6lr.cloudfront.net/uploads"
+
+DEFAULT_IMG = {
+    "smokes":   "https://i.imgur.com/smoke_placeholder.jpg",
+    "flashes":  "https://i.imgur.com/flash_placeholder.jpg",
+    "molotovs": "https://i.imgur.com/molotov_placeholder.jpg",
+}
 
 class CFGStates(StatesGroup):
     sens = State()
@@ -22,977 +28,643 @@ class CFGStates(StatesGroup):
     volume = State()
     binds = State()
 
+class SearchStates(StatesGroup):
+    waiting = State()
+
 user_lang = {}
 user_cfg = {}
+favorites = {}
+user_stats = {}  # uid -> {"views": int}
+search_results = {}  # uid -> list of nade matches
 
 # ─────────────────────────────────────────────────────────────────────────────
 # РОЗКИДИ — реальні дані з csnades.app
 # Структура: NADES[map][util_type] = { "Ціль": [ {name, img, url, throw, side, desc} ] }
 # ─────────────────────────────────────────────────────────────────────────────
 NADES = {
-
-    # ══════════════════════════════════════════════════════
-    # MIRAGE
-    # ══════════════════════════════════════════════════════
-    "Mirage": {
-        "smokes": {
-            "Window": [
+    'Mirage': {
+        'smokes': {
+            'B Site': [
                 {
-                    "name": "Window з Underpass",
-                    "img": f"{CDN}/91f5b560-f5d4-4e7c-9ddc-af97a2798de7/Screenshot%202023-09-10%2020-03-40.jpg",
-                    "url": "https://csnades.app/mirage/window-smoke-from-underpass",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Класичний смок у вікно. Стань в underpass, прицілься в верхній кут арки."
-                },
-                {
-                    "name": "Window з T-Spawn (альт)",
-                    "img": f"{CDN}/85f95329-ad1f-4a95-9ed6-110d3afee119/Screenshot%202023-09-07%2000-43-00.jpg",
-                    "url": "https://csnades.app/mirage/window-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Альтернатива — можна кидати одночасно з Connector smoke."
+                    'name': 'B Site з Back Alley',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/1c1b9c3a-3f06-44be-b23f-b6e04961711a/Screenshot%202023-09-10%2014-47-15.jpg',
+                    'url': 'https://csnades.app/mirage/b-site-smoke-from-back-alley',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Вирівняй горизонтально з серединою темної рамки зліва. Для B Split або eco plant.',
                 },
             ],
-            "Jungle": [
+            'Right Arch': [
                 {
-                    "name": "Jungle з Top Mid",
-                    "img": f"{CDN}/d84ce29c-4874-4801-9e66-89061400c8c0/Screenshot%202023-09-08%2001-17-23.jpg",
-                    "url": "https://csnades.app/mirage/jungle-smoke-from-top-mid",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Потрібно бачити коричневе вікно. Якщо граната влетить у стіну — підстроїться ліворуч."
-                },
-                {
-                    "name": "Jungle з T-Ramp",
-                    "img": f"{CDN}/d84ce29c-4874-4801-9e66-89061400c8c0/Screenshot%202023-09-08%2001-17-23.jpg",
-                    "url": "https://csnades.app/mirage/jungle-smoke-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Для solo A execute. Прицілься в трубу на краю даху, стань впритул до стіни."
+                    'name': 'Right Arch з Back Alley',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/86ce05f2-9311-4441-96b4-b9f5f4c619b7/Screenshot%202023-09-13%2020-14-45.jpg',
+                    'url': 'https://csnades.app/mirage/right-arch-smoke-from-back-alley',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Закриває правий арч на A site. Для A execute з CT сторони.',
                 },
             ],
-            "Connector": [
+            'Short (A)': [
                 {
-                    "name": "Connector з T-Spawn",
-                    "img": f"{CDN}/85f95329-ad1f-4a95-9ed6-110d3afee119/Screenshot%202023-09-07%2000-43-00.jpg",
-                    "url": "https://csnades.app/mirage/connector-smoke-from-t-spawn-3",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Crouch & walk jumpthrow. Для rush та exec на A."
-                },
-                {
-                    "name": "Connector з Short",
-                    "img": f"{CDN}/85f95329-ad1f-4a95-9ed6-110d3afee119/Screenshot%202023-09-07%2000-43-00.jpg",
-                    "url": "https://csnades.app/mirage/connector-smoke-from-short",
-                    "throw": "left click", "side": "CT",
-                    "desc": "CT defensive. Відрізає connector під час ретейку A."
+                    'name': 'Short з Underpass',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/5f607d86-cb64-4f30-b3bf-ad744a88553e/Screenshot%202023-12-08%2002-31-18.jpg',
+                    'url': 'https://csnades.app/mirage/short-smoke-from-underpass',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Для B split — прикриває short позицію CT.',
                 },
             ],
-            "Stairs (A site)": [
+            'Connector': [
                 {
-                    "name": "Stairs з T-Spawn",
-                    "img": f"{CDN}/9e94ed14-100d-4887-8487-a925c55e783e/Screenshot%202023-09-07%2002-08-39.jpg",
-                    "url": "https://csnades.app/mirage/stairs-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Smoke Deep Stairs з T Spawn. Для A rush, поєднуй з jungle smoke."
-                },
-                {
-                    "name": "Stairs з Underpass",
-                    "img": f"{CDN}/9e94ed14-100d-4887-8487-a925c55e783e/Screenshot%202023-09-07%2002-08-39.jpg",
-                    "url": "https://csnades.app/mirage/stairs-smoke-from-underpass",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Простіший варіант — стань в underpass, прицілься в верхній правий кут мосту."
+                    'name': 'Connector з Top T-Spawn',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/55557817-78e7-40bc-9af2-bfcd8cc89541/Screenshot%202023-09-07%2000-34-47.jpg',
+                    'url': 'https://csnades.app/mirage/connector-smoke-from-top-t-spawn',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Crouch & walk jumpthrow. Для rush та exec на A.',
                 },
             ],
-            "Short (B)": [
+            'Stairs (A site)': [
                 {
-                    "name": "Short з Back Alley",
-                    "img": f"{CDN}/4dd56839-8e95-4da8-ae14-556df964be34/Screenshot%202023-09-10%2013-41-02.jpg",
-                    "url": "https://csnades.app/mirage/short-smoke-from-back-alley",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Цілься прямо в край верхньої частини вежі. Вертикальний запас великий, горизонтальний — малий."
+                    'name': 'Stairs з T-Roof',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/dd38d5f0-4e5b-4780-8795-045da260e699/Screenshot%202023-11-15%2010-48-24.jpg',
+                    'url': 'https://csnades.app/mirage/stairs-smoke-from-t-roof',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Smoke Deep Stairs з T Roof. Для A rush, поєднуй з jungle smoke.',
                 },
                 {
-                    "name": "Short з T-Mid",
-                    "img": f"{CDN}/4dd56839-8e95-4da8-ae14-556df964be34/Screenshot%202023-09-10%2013-41-02.jpg",
-                    "url": "https://csnades.app/mirage/short-smoke-from-mid",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Для B split — прикриває short позицію CT."
-                },
-            ],
-            "B Center": [
-                {
-                    "name": "B Center з Back Alley",
-                    "img": f"{CDN}/1c1b9c3a-3f06-44be-b23f-b6e04961711a/Screenshot%202023-09-10%2014-47-15.jpg",
-                    "url": "https://csnades.app/mirage/b-site-smoke-from-back-alley",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Вирівняй горизонтально з серединою темної рамки зліва. Для B Split або eco plant."
-                },
-                {
-                    "name": "B Center з Van",
-                    "img": f"{CDN}/1c1b9c3a-3f06-44be-b23f-b6e04961711a/Screenshot%202023-09-10%2014-47-15.jpg",
-                    "url": "https://csnades.app/mirage/b-center-smoke-from-van",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Простіший прицільний орієнтир — жовта пляма на стіні ван. Stand & click."
+                    'name': 'Stairs з T-Roof (альт)',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/dd38d5f0-4e5b-4780-8795-045da260e699/Screenshot%202023-11-15%2010-48-24.jpg',
+                    'url': 'https://csnades.app/mirage/clmc628ge005sig7454dlrqtc',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Альтернативний варіант stairs smoke з T roof.',
                 },
             ],
-            "Firebox (CT)": [
+            'Ticket Booth': [
                 {
-                    "name": "Firebox з Ticket",
-                    "img": f"{CDN}/d1634db2-fa40-45eb-86ea-0c556323bef4/Screenshot%202023-11-14%2009-03-26.jpg",
-                    "url": "https://csnades.app/mirage/firebox-smoke-from-ticket",
-                    "throw": "left click", "side": "CT",
-                    "desc": "Defensive smoke — закриває CT peak під час ретейку A site."
+                    'name': 'Ticket з T-Spawn',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/406c3394-def7-4366-aae3-6fdb24a28ed1/Screenshot%202023-11-15%2013-17-21.jpg',
+                    'url': 'https://csnades.app/mirage/ticket-smoke-from-t-spawn-2',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Закриває ticket booth під час A execute.',
                 },
             ],
-            "Ticket Booth": [
+            'Jungle': [
                 {
-                    "name": "Ticket з Short",
-                    "img": f"{CDN}/d1634db2-fa40-45eb-86ea-0c556323bef4/Screenshot%202023-11-14%2009-03-26.jpg",
-                    "url": "https://csnades.app/mirage/ticket-booth-smoke-from-short",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Закриває ticket booth під час CT holdу. Прицілься в верхній лівий кут від'їзду."
+                    'name': 'Jungle з T-Spawn',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/c88a3fb9-cb74-4921-87cd-aad25a3f1b55/Screenshot%202023-09-08%2019-59-10%20%282%29.jpg',
+                    'url': 'https://csnades.app/mirage/jungle-smoke-from-t-spawn',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Для solo A execute. Прицілься в трубу на краю даху, стань впритул до стіни.',
                 },
             ],
-            "Van (B site)": [
+            'Window': [
                 {
-                    "name": "Van з T-Spawn",
-                    "img": f"{CDN}/1c1b9c3a-3f06-44be-b23f-b6e04961711a/Screenshot%202023-09-10%2014-47-15.jpg",
-                    "url": "https://csnades.app/mirage/van-smoke-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Smoke на Van — для B execute. Стань у T-spawn, цілься в антену."
+                    'name': 'Window з T-Spawn',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/1a148316-3fdc-4763-94e1-dd4457cd266a/Screenshot%202024-01-31%2018-39-26.jpg',
+                    'url': 'https://csnades.app/mirage/cltqi4lk70000l008vv07pyqf',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Класичний смок у вікно з T spawn.',
+                },
+                {
+                    'name': 'Kitchen Window з Back Alley',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/dc5fd27e-0829-43d1-9a24-a555ed0d7a64/Screenshot%202023-09-10%2013-37-10.jpg',
+                    'url': 'https://csnades.app/mirage/kitchen-window-smoke-from-back-alley',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Закриває kitchen window для безпечного A execute.',
+                },
+            ],
+            'Jungle + Connector': [
+                {
+                    'name': 'Jungle+Connector з T-Roof',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/669dbf4b-3502-47db-ba31-1901cbdb03ea/Screenshot%202023-09-08%2020-23-22.jpg',
+                    'url': 'https://csnades.app/mirage/jungle+connector-smoke-from-t-roof',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Подвійний смок — закриває jungle і connector одночасно.',
                 },
             ],
         },
-        "flashes": {
-            "Window": [
+        'flashes': {
+            'Ramp': [
                 {
-                    "name": "Window Flash з Mid Bench",
-                    "img": None,
-                    "url": "https://csnades.app/mirage/window-flash-from-mid-bench",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Self pop flash. Можна використовувати і для підтримки тіммейта."
-                },
-                {
-                    "name": "Window Pop Flash з Underpass",
-                    "img": None,
-                    "url": "https://csnades.app/mirage/window-pop-flash-from-underpass",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Throw, потім одразу рухайся в window. Флешка вибухає одночасно з входом."
+                    'name': 'Over Ramp Flash з Ramp',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/4572457d-136b-4b52-a2dc-da633ce75868/Screenshot%202023-09-08%2021-05-11.jpg',
+                    'url': 'https://csnades.app/mirage/over-ramp-flash-from-ramp',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Сліпить CT за ramp. Виходь одразу після кидка.',
                 },
             ],
-            "Apps": [
+            'B Site': [
                 {
-                    "name": "Apps Flash з Van",
-                    "img": None,
-                    "url": "https://csnades.app/mirage/apps-flash-from-van",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Support flash для тіммейта що бере apps. Crouch, aim темна точка, W 1 секунду + jumpthrow."
+                    'name': 'Over Boxes Flash з Side Alley',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/dd817f38-ecd6-474d-a173-0a8f31af24c2/Screenshot%202023-09-08%2002-28-35.jpg',
+                    'url': 'https://csnades.app/mirage/over-boxes-flash-from-side-alley',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Через ящики на B — сліпить CT на site.',
                 },
             ],
-            "Short (A)": [
+            'Window': [
                 {
-                    "name": "Short Pop Flash з Jungle",
-                    "img": None,
-                    "url": "https://csnades.app/mirage/short-pop-flash-from-jungle",
-                    "throw": "right click", "side": "TT",
-                    "desc": "Підкидаєш правою кнопкою — флешка вибухає перед Short, сліпить CT. Виходь одразу після кидка."
+                    'name': 'Window Flash з Mid Bench',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/a300db8e-5574-423d-91f2-a6d25455bb47/Screenshot%202023-09-09%2020-23-43.jpg',
+                    'url': 'https://csnades.app/mirage/window-flash-from-mid-bench',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Self pop flash. Можна використовувати і для підтримки тіммейта.',
                 },
             ],
-            "CT / A site": [
+            'Apps': [
                 {
-                    "name": "CT Pop Flash з Stairs",
-                    "img": None,
-                    "url": "https://csnades.app/mirage/ct-pop-flash-from-stairs",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Стань на сходах, кинь HIGH — флешка вибухає над CT area. Відверни погляд після кидка."
+                    'name': 'Apps Flash з B Window',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/062903bf-573f-4560-8628-cda36c5e27e0/Screenshot%202023-11-12%2023-48-30.jpg',
+                    'url': 'https://csnades.app/mirage/apps-flash-from-b-window',
+                    'throw': 'left jumpthrow',
+                    'side': 'CT',
+                    'desc': 'Support flash для тіммейта що бере apps.',
                 },
             ],
-        },
-        "molotovs": {
-            "A Default": [
+            'Connector': [
                 {
-                    "name": "A Default з Connector",
-                    "img": None,
-                    "url": "https://csnades.app/mirage/a-default-molotov-from-connector",
-                    "throw": "left click", "side": "CT",
-                    "desc": "Не дає TT плантувати в default. Також для ретейку A site."
-                },
-                {
-                    "name": "A Default з Ticket",
-                    "img": None,
-                    "url": "https://csnades.app/mirage/a-default-molotov-from-ticket",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Кидаєш з Ticket Booth — перекриває весь default. Ідеально для retake."
-                },
-            ],
-            "Window": [
-                {
-                    "name": "Window Molotov з Top Mid",
-                    "img": None,
-                    "url": "https://csnades.app/mirage/window-molotov-from-top-mid",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Stand & run jumpthrow. Виганяє CT з вікна."
-                },
-            ],
-            "B van": [
-                {
-                    "name": "B Van Molotov з Alley",
-                    "img": None,
-                    "url": "https://csnades.app/mirage/b-van-molotov-from-alley",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Прикриває van corner перед B execute. Прицілься в кут між van і стіною."
-                },
-            ],
-            "Jungle": [
-                {
-                    "name": "Jungle Molotov з Ramp",
-                    "img": None,
-                    "url": "https://csnades.app/mirage/jungle-molotov-from-ramp",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Defensive — виганяє TT з jungle під час CT retake A."
+                    'name': 'Connector Flash з Top Mid',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/052b0de0-c2b3-4876-9b6d-da7bf28ca975/Screenshot%202023-09-08%2012-27-17.jpg',
+                    'url': 'https://csnades.app/mirage/connector-flash-from-top-mid-2',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Сліпить CT в connector при пуші mid.',
                 },
             ],
         },
-    },
-
-    # ══════════════════════════════════════════════════════
-    # INFERNO
-    # ══════════════════════════════════════════════════════
-    "Inferno": {
-        "smokes": {
-            "Balcony (Banana)": [
+        'molotovs': {
+            'Bench (B site)': [
                 {
-                    "name": "Balcony з T-Spawn",
-                    "img": f"{CDN}/412f6ecf-23f4-4467-820d-8b5cd0ef1463/Screenshot%202023-12-08%2023-58-26.jpg",
-                    "url": "https://csnades.app/inferno/balcony-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Закриває balcony — CT не побачить TT з banana. Один з найважливіших смоків карти."
-                },
-                {
-                    "name": "Balcony з Top Banana",
-                    "img": f"{CDN}/412f6ecf-23f4-4467-820d-8b5cd0ef1463/Screenshot%202023-12-08%2023-58-26.jpg",
-                    "url": "https://csnades.app/inferno/balcony-smoke-from-top-banana",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Кидається вже під час пушу banana — прицілься в верхній кут балкона."
+                    'name': 'Bench Molotov з Apps',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/15fe27bd-0d57-4fe0-855d-7d2d8133b8a0/Screenshot%202023-09-10%2015-41-11.jpg',
+                    'url': 'https://csnades.app/mirage/bench-molotov-from-apps',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Перекриває bench corner перед B execute.',
                 },
             ],
-            "Half Wall (Banana)": [
+            'Window': [
                 {
-                    "name": "Half Wall з Fountain",
-                    "img": f"{CDN}/412f6ecf-23f4-4467-820d-8b5cd0ef1463/Screenshot%202023-12-08%2023-58-26.jpg",
-                    "url": "https://csnades.app/inferno/banana-smoke-from-fountain",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Відрізає banana від car area під час CT retake або holdу."
+                    'name': 'Window Molotov з Top Mid',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/d885f2bf-cb61-419b-b57c-a5652d05d3a0/Screenshot%202023-09-11%2000-44-46.jpg',
+                    'url': 'https://csnades.app/mirage/window-molotov-from-top-mid',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Stand & run jumpthrow. Виганяє CT з вікна.',
                 },
             ],
-            "Car (B site)": [
+            'Ramp': [
                 {
-                    "name": "Car з T-Spawn",
-                    "img": f"{CDN}/158b3070-5ada-4dbe-adc6-8fba8a2afc06/Screenshot%202023-11-18%2023-12-32.jpg",
-                    "url": "https://csnades.app/inferno/car-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Стандартний car smoke для B execute. Стань на T spawn і прицілься в димар."
+                    'name': 'Ramp Molotov з CT',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/9e3ec005-5fee-430c-86db-43b719c4f546/Screenshot%202023-09-10%2023-53-36.jpg',
+                    'url': 'https://csnades.app/mirage/ramp-molotov-from-ct',
+                    'throw': 'left click',
+                    'side': 'CT',
+                    'desc': 'Defensive — виганяє TT з ramp під час CT retake A.',
                 },
             ],
-            "Moto (A site)": [
+            'Ninja (B site)': [
                 {
-                    "name": "Moto з 2nd Mid",
-                    "img": f"{CDN}/158b3070-5ada-4dbe-adc6-8fba8a2afc06/Screenshot%202023-11-18%2023-12-32.jpg",
-                    "url": "https://csnades.app/inferno/moto-smoke-from-2nd-mid",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Смок Moto з 2nd mid для exec на A site."
-                },
-                {
-                    "name": "Moto з Apartments",
-                    "img": f"{CDN}/158b3070-5ada-4dbe-adc6-8fba8a2afc06/Screenshot%202023-11-18%2023-12-32.jpg",
-                    "url": "https://csnades.app/inferno/moto-smoke-from-apartments",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Кидаєш з апартів — для швидкого A rush через апарти."
+                    'name': 'Ninja Molotov з Jungle',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/d250e77a-fa34-4791-959a-7e44071eccb2/Screenshot%202023-11-12%2023-36-06.jpg',
+                    'url': 'https://csnades.app/mirage/ninja-molotov-from-jungle',
+                    'throw': 'left jumpthrow',
+                    'side': 'CT',
+                    'desc': 'Виганяє TT з ninja spot на B site.',
                 },
             ],
-            "CT (A site)": [
+            'Connector': [
                 {
-                    "name": "CT з 2nd Mid",
-                    "img": f"{CDN}/774352ab-407e-4f3b-8897-42dff5e334d4/Screenshot%202023-08-28%2016-12-26.jpg",
-                    "url": "https://csnades.app/inferno/ct-smoke-from-2nd-mid",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Відрізає CT від A site при execute. Поєднується з Moto і Arch."
+                    'name': 'Connector Molotov з Top Mid',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/589e18d4-b2c2-4dcc-bf6c-3773d0448b94/Screenshot%202023-09-08%2010-10-12.jpg',
+                    'url': 'https://csnades.app/mirage/connector-molotov-from-top-mid',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Виганяє CT з connector позиції.',
                 },
             ],
-            "Arch (A site)": [
+            'Firebox': [
                 {
-                    "name": "Arch з T-Spawn",
-                    "img": f"{CDN}/774352ab-407e-4f3b-8897-42dff5e334d4/Screenshot%202023-08-28%2016-12-26.jpg",
-                    "url": "https://csnades.app/inferno/arch-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Закриває arch — CT не зможе пікати з Arch позиції під час A execute."
-                },
-            ],
-            "CT Banana": [
-                {
-                    "name": "CT/Banana з Ruins",
-                    "img": f"{CDN}/774352ab-407e-4f3b-8897-42dff5e334d4/Screenshot%202023-08-28%2016-12-26.jpg",
-                    "url": "https://csnades.app/inferno/b-entrance-smoke-from-ruins",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Ретейк. Pracює на 128 та 64 tick."
-                },
-            ],
-        },
-        "flashes": {
-            "Banana": [
-                {
-                    "name": "Banana Pop Flash з T-Spawn",
-                    "img": f"{CDN}/64752cb4-4226-40c9-a9c3-0b10c709a1a6/Screenshot%202023-09-12%2015-37-32.jpg",
-                    "url": "https://csnades.app/inferno/banana-flash-from-t-spawn",
-                    "throw": "right click", "side": "TT",
-                    "desc": "Кидаєш правою кнопкою над кутом — флешка вибухає перед CT на banana. Виходь одразу."
-                },
-                {
-                    "name": "Banana Flash з Fountain",
-                    "img": None,
-                    "url": "https://csnades.app/inferno/banana-flash-from-fountain",
-                    "throw": "left click", "side": "CT",
-                    "desc": "Support flash з Fountain — сліпить TT що пушать banana."
-                },
-            ],
-            "Apartments": [
-                {
-                    "name": "Apartments Flash з CT",
-                    "img": None,
-                    "url": "https://csnades.app/inferno/apartments-flash-from-ct",
-                    "throw": "left click", "side": "CT",
-                    "desc": "Сліпить TT що виходять з апартів на A site."
-                },
-            ],
-            "A site": [
-                {
-                    "name": "A Site Pop Flash з Arch",
-                    "img": None,
-                    "url": "https://csnades.app/inferno/a-site-pop-flash-from-arch",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Вибухає над A site — сліпить всіх CT позиціях: Moto, CT, Pit."
-                },
-            ],
-        },
-        "molotovs": {
-            "Balcony": [
-                {
-                    "name": "Balcony Molotov з T-Spawn",
-                    "img": None,
-                    "url": "https://csnades.app/inferno/balcony-molotov-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Виганяє CT з balcony перед B execute. Прицілься в правий кут балкона."
-                },
-            ],
-            "Car (B site)": [
-                {
-                    "name": "Car Molotov з B entrance",
-                    "img": None,
-                    "url": "https://csnades.app/inferno/car-molotov-from-b-entrance",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Defensive — не дає TT плантувати біля Car. Корисно для retake."
-                },
-            ],
-            "Pit (A site)": [
-                {
-                    "name": "Pit Molotov з Apartments",
-                    "img": f"{CDN}/37f8cba2-6f66-408b-885f-75686d044373/Screenshot%202023-09-16%2015-06-28.jpg",
-                    "url": "https://csnades.app/inferno/pit-molotov-from-apps",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Виганяє CT з Pit позиції під час A execute. Ключовий молоток для exec."
-                },
-            ],
-            "Banana": [
-                {
-                    "name": "Banana Molotov з T-Spawn",
-                    "img": None,
-                    "url": "https://csnades.app/inferno/banana-slow-molotov-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Сповільнює CT пуш banana на початку раунду — дає час дістатися Half Wall."
+                    'name': 'Firebox Molotov з Tetris',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/f57b5945-e685-4c62-babe-a7895ef1ce53/Screenshot%202023-09-07%2002-01-26.jpg',
+                    'url': 'https://csnades.app/mirage/firebox-molotov-from-tetris',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Перекриває firebox — CT не може там стояти.',
                 },
             ],
         },
     },
-
-    # ══════════════════════════════════════════════════════
-    # DUST 2
-    # ══════════════════════════════════════════════════════
-    "Dust2": {
-        "smokes": {
-            "Long Corner (Blue)": [
+    'Inferno': {
+        'smokes': {
+            'Half Wall (Banana)': [
                 {
-                    "name": "Long Corner з T-Spawn",
-                    "img": f"{CDN}/7b6fca39-8d42-4805-a042-9201e8522262/Screenshot%202023-09-30%2015-10-23.jpg",
-                    "url": "https://csnades.app/dust2/long-corner-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Стандартний Long smoke. Стань у T spawn, прицілься в ліхтар."
-                },
-                {
-                    "name": "Long Corner з Cat",
-                    "img": f"{CDN}/7b6fca39-8d42-4805-a042-9201e8522262/Screenshot%202023-09-30%2015-10-23.jpg",
-                    "url": "https://csnades.app/dust2/long-corner-smoke-from-cat",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Якщо вже дістався Cat — кидаєш з там. Прицілься в правий кут балки."
+                    'name': 'Half Wall з Fountain',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/412f6ecf-23f4-4467-820d-8b5cd0ef1463/Screenshot%202023-12-08%2023-58-28.jpg',
+                    'url': 'https://csnades.app/inferno/banana-smoke-from-fountain',
+                    'throw': 'left jumpthrow',
+                    'side': 'CT',
+                    'desc': 'Відрізає banana від car area під час CT retake або holdу.',
                 },
             ],
-            "A Cross (CT spawn)": [
+            'Car (B site)': [
                 {
-                    "name": "CT Cross з Long",
-                    "img": f"{CDN}/c60d078b-053a-477f-9bbc-21942471b008/Screenshot%202023-10-13%2011-53-20.jpg",
-                    "url": "https://csnades.app/dust2/ct-cross-smoke-from-long",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Закриває CT cross для безпечного виходу на A site з Long. Критичний для exec."
-                },
-                {
-                    "name": "CT Cross з Pit",
-                    "img": f"{CDN}/c60d078b-053a-477f-9bbc-21942471b008/Screenshot%202023-10-13%2011-53-20.jpg",
-                    "url": "https://csnades.app/dust2/ct-cross-smoke-from-pit",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Альтернатива з Pit — дає кут для плантування та holdу."
+                    'name': 'Car з T-Spawn',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/c6a5d9b8-3f23-4377-8705-724a791f73d1/Screenshot%202023-11-18%2014-05-09.jpg',
+                    'url': 'https://csnades.app/inferno/car-smoke-from-t-spawn',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Стандартний car smoke для B execute. Стань на T spawn і прицілься в димар.',
                 },
             ],
-            "B Door": [
+            'Moto (A site)': [
                 {
-                    "name": "B Door з Catwalk",
-                    "img": f"{CDN}/c60d078b-053a-477f-9bbc-21942471b008/Screenshot%202023-10-13%2011-53-20.jpg",
-                    "url": "https://csnades.app/dust2/b-door-smoke-from-catwalk",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Stand & walk jumpthrow. Для exec або support на B site."
-                },
-                {
-                    "name": "B Door з T-Spawn",
-                    "img": f"{CDN}/c60d078b-053a-477f-9bbc-21942471b008/Screenshot%202023-10-13%2011-53-20.jpg",
-                    "url": "https://csnades.app/dust2/b-door-smoke-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Можна кидати не виходячи з T spawn — ідеально для раннього B push."
+                    'name': 'Moto з 2nd Mid',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/158b3070-5ada-4dbe-adc6-8fba8a2afc06/Screenshot%202023-11-18%2023-12-33.jpg',
+                    'url': 'https://csnades.app/inferno/moto-smoke-from-2nd-mid',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Смок Moto з 2nd mid для exec на A site.',
                 },
             ],
-            "B Window": [
+            'CT Banana': [
                 {
-                    "name": "B Window з T-Spawn",
-                    "img": f"{CDN}/c60d078b-053a-477f-9bbc-21942471b008/Screenshot%202023-10-13%2011-53-20.jpg",
-                    "url": "https://csnades.app/dust2/b-window-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Закриває B Window (CT позиція над дверима). Для safe B execute."
-                },
-            ],
-            "Mid Doors": [
-                {
-                    "name": "Mid Doors з T-Spawn",
-                    "img": f"{CDN}/7b6fca39-8d42-4805-a042-9201e8522262/Screenshot%202023-09-30%2015-10-23.jpg",
-                    "url": "https://csnades.app/dust2/mid-doors-smoke-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Smoke на Mid Doors для безпечного пуша Cat. Прицілься в трубу над дверима."
-                },
-                {
-                    "name": "Mid Doors з Catwalk",
-                    "img": f"{CDN}/7b6fca39-8d42-4805-a042-9201e8522262/Screenshot%202023-09-30%2015-10-23.jpg",
-                    "url": "https://csnades.app/dust2/mid-doors-smoke-from-catwalk",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Якщо вже на cat — quick smoke щоб безпечно перейти в short."
-                },
-            ],
-            "A Short": [
-                {
-                    "name": "A Short з Long Doors",
-                    "img": f"{CDN}/7b6fca39-8d42-4805-a042-9201e8522262/Screenshot%202023-09-30%2015-10-23.jpg",
-                    "url": "https://csnades.app/dust2/a-short-smoke-from-long-doors",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Закриває Short для безпечного A execute. Прицілься в верхній кут."
+                    'name': 'CT/Banana з Ruins',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/774352ab-407e-4f3b-8897-42dff5e334d4/Screenshot%202023-08-28%2016-12-28.jpg',
+                    'url': 'https://csnades.app/inferno/b-entrance-smoke-from-ruins',
+                    'throw': 'left jumpthrow',
+                    'side': 'CT',
+                    'desc': 'Ретейк. Pracює на 128 та 64 tick.',
                 },
             ],
         },
-        "flashes": {
-            "A Long": [
+        'flashes': {
+            'Banana': [
                 {
-                    "name": "Long Pop Flash з T-Spawn",
-                    "img": None,
-                    "url": "https://csnades.app/dust2/long-pop-flash-from-t-spawn",
-                    "throw": "right click", "side": "TT",
-                    "desc": "Правою кнопкою — флешка над Long кутом, сліпить CT. Виходь одразу."
-                },
-                {
-                    "name": "Long Boost Flash з CT",
-                    "img": None,
-                    "url": "https://csnades.app/dust2/long-flash-from-ct",
-                    "throw": "left click", "side": "CT",
-                    "desc": "CT defensive flash — сліпить TT що виходять на Long."
-                },
-            ],
-            "B Site": [
-                {
-                    "name": "B Site Pop Flash з Tunnels",
-                    "img": None,
-                    "url": "https://csnades.app/dust2/b-site-pop-flash-from-tunnels",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Кидаєш через стелю тунелю — вибухає над B site, сліпить CT."
-                },
-            ],
-            "Mid": [
-                {
-                    "name": "Mid Flash з T-Spawn",
-                    "img": None,
-                    "url": "https://csnades.app/dust2/mid-flash-from-t-spawn",
-                    "throw": "right click", "side": "TT",
-                    "desc": "Сліпить CT на Mid при спробі пуша Cat."
+                    'name': 'Banana Pop Flash з T-Spawn',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/64752cb4-4226-40c9-a9c3-0b10c709a1a6/Screenshot%202023-09-12%2015-37-36.jpg',
+                    'url': 'https://csnades.app/inferno/banana-flash-from-t-spawn',
+                    'throw': 'right click',
+                    'side': 'TT',
+                    'desc': 'Кидаєш правою кнопкою над кутом — флешка вибухає перед CT на banana. Виходь одразу.',
                 },
             ],
         },
-        "molotovs": {
-            "B Site (default)": [
+        'molotovs': {
+            'Pit (A site)': [
                 {
-                    "name": "B Default Molotov з Tunnels",
-                    "img": None,
-                    "url": "https://csnades.app/dust2/b-default-molotov-from-tunnels",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Перекриває default plant position — CT не може плантувати без ризику."
-                },
-            ],
-            "B Plat": [
-                {
-                    "name": "B Plat Molotov з CT",
-                    "img": None,
-                    "url": "https://csnades.app/dust2/b-plat-molotov-from-ct",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Defensive — виганяє TT з Plat позиції під час retake B."
-                },
-            ],
-            "A Pit": [
-                {
-                    "name": "A Pit Molotov з CT",
-                    "img": None,
-                    "url": "https://csnades.app/dust2/a-pit-molotov-from-ct",
-                    "throw": "left click", "side": "CT",
-                    "desc": "Виганяє TT з Pit на retake A. Прицілься в край сходів."
+                    'name': 'Pit Molotov з Apartments',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/37f8cba2-6f66-408b-885f-75686d044373/Screenshot%202023-09-16%2015-06-31.jpg',
+                    'url': 'https://csnades.app/inferno/pit-molotov-from-apps',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Виганяє CT з Pit позиції під час A execute. Ключовий молоток для exec.',
                 },
             ],
         },
     },
-
-    # ══════════════════════════════════════════════════════
-    # NUKE
-    # ══════════════════════════════════════════════════════
-    "Nuke": {
-        "smokes": {
-            "Garage": [
+    'Dust2': {
+        'smokes': {
+            'Tunnels (B)': [
                 {
-                    "name": "Garage з T-Spawn",
-                    "img": f"{CDN}/478c81a9-2fe2-4c5a-ad4b-9e5a02e9d533/Screenshot%202023-09-20%2013-43-36.jpg",
-                    "url": "https://csnades.app/nuke/garage-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Смок Garage з T-Spawn — відкриває шлях для пуша через garage."
+                    'name': 'Tunnel з CT Mid',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/389e3c2e-8bd6-4089-abff-3924d9944a1c/Screenshot%202023-10-13%2012-09-53.jpg',
+                    'url': 'https://csnades.app/dust2/tunnel-smoke-from-ct-mid',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Закриває tunnel entrance для безпечного B execute.',
                 },
                 {
-                    "name": "Garage з Ramp",
-                    "img": f"{CDN}/478c81a9-2fe2-4c5a-ad4b-9e5a02e9d533/Screenshot%202023-09-20%2013-43-36.jpg",
-                    "url": "https://csnades.app/nuke/garage-smoke-from-ramp",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Якщо вже на ramp — alt smoke на garage для B exec."
+                    'name': 'Window з Outside Tunnel',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/080eafcd-e37b-455d-ae07-6c835eab9f8a/Screenshot%202023-09-30%2016-27-51.jpg',
+                    'url': 'https://csnades.app/dust2/window-smoke-from-outside-tunnel',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Закриває CT window над тунелем.',
                 },
-            ],
-            "Vents": [
                 {
-                    "name": "Vents з T-Spawn",
-                    "img": f"{CDN}/477a803c-df32-4cdb-b155-39f4deaa5978/Screenshot%202023-09-20%2014-18-42.jpg",
-                    "url": "https://csnades.app/nuke/vent-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Rush smoke для Vents з T-Spawn — для split B через vents і ramp."
+                    'name': 'B Door з Outside Tunnel',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/40531e52-5d55-44a3-9922-1fabb3d73f15/Screenshot%202023-10-13%2012-04-15.jpg',
+                    'url': 'https://csnades.app/dust2/b-door-smoke-from-outside-tunnel',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Smoke B door для безпечного виходу з тунелю.',
                 },
             ],
-            "CT (Upper)": [
+            'Xbox (Mid)': [
                 {
-                    "name": "CT Smoke з Hut",
-                    "img": f"{CDN}/477a803c-df32-4cdb-b155-39f4deaa5978/Screenshot%202023-09-20%2014-18-42.jpg",
-                    "url": "https://csnades.app/nuke/ct-smoke-from-hut",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Закриває CT peak на Upper site. Прицілься в кут антени."
+                    'name': 'Xbox з T-Spawn',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/d87fe69e-b852-4195-b69b-22af4d5ffb9a/Screenshot%202023-09-30%2015-06-25.jpg',
+                    'url': 'https://csnades.app/dust2/xbox-smoke-from-t-spawn',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Закриває Xbox box — для безпечного пуша на Cat.',
                 },
             ],
-            "Radio (A site)": [
+            'A Cross': [
                 {
-                    "name": "Radio з Outside",
-                    "img": f"{CDN}/478c81a9-2fe2-4c5a-ad4b-9e5a02e9d533/Screenshot%202023-09-20%2013-43-36.jpg",
-                    "url": "https://csnades.app/nuke/radio-smoke-from-outside",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Smoke Radio — для execute на A Upper з Outside entry."
+                    'name': 'A Cross з Long',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/b6fecf74-781e-4fd1-9254-32183ad22cdf/Screenshot%202023-09-30%2015-24-49.jpg',
+                    'url': 'https://csnades.app/dust2/a-cross-smoke-from-long',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Закриває cross для безпечного виходу з Long на A site.',
                 },
             ],
-            "Heaven": [
+            'Long (A)': [
                 {
-                    "name": "Heaven з T-Spawn",
-                    "img": f"{CDN}/477a803c-df32-4cdb-b155-39f4deaa5978/Screenshot%202023-09-20%2014-18-42.jpg",
-                    "url": "https://csnades.app/nuke/heaven-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Закриває Heaven позицію. Ключовий смок для exec на Upper A."
+                    'name': 'Long Door з Short Boost',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/cee96fbd-89b8-41ed-a713-7538429bfbbf/Screenshot%202023-09-30%2017-07-42.jpg',
+                    'url': 'https://csnades.app/dust2/long-door-smoke-from-short-boost',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Smoke Long door з short boost позиції.',
                 },
-            ],
-        },
-        "flashes": {
-            "Hut": [
                 {
-                    "name": "Hut Pop Flash з Outside",
-                    "img": None,
-                    "url": "https://csnades.app/nuke/hut-pop-flash-from-outside",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Pop flash перед hut — вибухає одночасно з входом. Сліпить всіх всередині."
-                },
-            ],
-            "Ramp": [
-                {
-                    "name": "Ramp Flash з T-Spawn",
-                    "img": None,
-                    "url": "https://csnades.app/nuke/ramp-flash-from-t-spawn",
-                    "throw": "right click", "side": "TT",
-                    "desc": "Сліпить CT що holdять ramp. Кидати під кутом правою кнопкою."
+                    'name': 'Long Corner з T-Spawn',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/7b6fca39-8d42-4805-a042-9201e8522262/Screenshot%202023-09-30%2015-10-34.jpg',
+                    'url': 'https://csnades.app/dust2/long-corner-smoke-from-t-spawn',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Закриває long corner (blue) — для безпечного виходу на Long.',
                 },
             ],
         },
-        "molotovs": {
-            "Lower B (Default)": [
+        'flashes': {
+            'B Site': [
                 {
-                    "name": "Lower Default Molotov з Ramp",
-                    "img": None,
-                    "url": "https://csnades.app/nuke/lower-default-molotov-from-ramp",
-                    "throw": "left click", "side": "CT",
-                    "desc": "Defensive molotov — перекриває default plant на Lower B."
+                    'name': 'B Site Flash з Upper Tunnel',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/6c4bfda3-1412-4597-8a87-bf139c3e94dc/Screenshot%202023-09-30%2018-10-53.jpg',
+                    'url': 'https://csnades.app/dust2/b-site-flash-from-upper-tunnel',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Pop flash на B site — кидай перед виходом з тунелю.',
                 },
             ],
-            "Vents": [
+            'Short (A)': [
                 {
-                    "name": "Vents Molotov з Upper",
-                    "img": None,
-                    "url": "https://csnades.app/nuke/vents-molotov-from-upper",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Виганяє TT що спускаються через vents. Кидати через люк зверху."
+                    'name': 'Short Flash з Lower Tunnel',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/b4b543c8-4541-42e5-be79-70db14aed870/Screenshot%202023-09-30%2017-55-25.jpg',
+                    'url': 'https://csnades.app/dust2/short-flash-from-lower-tunnel',
+                    'throw': 'right click',
+                    'side': 'TT',
+                    'desc': 'Сліпить CT на short з нижнього тунелю.',
                 },
             ],
-        },
-    },
-
-    # ══════════════════════════════════════════════════════
-    # ANUBIS
-    # ══════════════════════════════════════════════════════
-    "Anubis": {
-        "smokes": {
-            "Connector": [
+            'Long (A)': [
                 {
-                    "name": "Connector з T-Spawn",
-                    "img": f"{CDN}/998732b4-c384-4679-ba70-ae4277b34d9d/Screenshot%202023-11-04%2014-40-10.jpg",
-                    "url": "https://csnades.app/anubis/connector-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Init smoke для контролю connector — для split або fake B."
-                },
-                {
-                    "name": "Connector з Mid",
-                    "img": f"{CDN}/998732b4-c384-4679-ba70-ae4277b34d9d/Screenshot%202023-11-04%2014-40-10.jpg",
-                    "url": "https://csnades.app/anubis/connector-smoke-from-mid",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Якщо вже взяв mid control — швидкий smoke на connector."
+                    'name': 'Long Flash з Outside Long',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/4ce1d479-2719-4fc3-abe9-c1facd6c8313/Screenshot%202023-09-30%2017-17-28.jpg',
+                    'url': 'https://csnades.app/dust2/long-flash-from-outside-long',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Сліпить CT що тримає Long при виході з T spawn.',
                 },
             ],
-            "CT (B site)": [
+            'CT Mid': [
                 {
-                    "name": "CT з B entrance",
-                    "img": f"{CDN}/998732b4-c384-4679-ba70-ae4277b34d9d/Screenshot%202023-11-04%2014-40-10.jpg",
-                    "url": "https://csnades.app/anubis/ct-smoke-from-b-entrance",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Smoke CT на B site — для execute або default plant."
-                },
-            ],
-            "Palace (A site)": [
-                {
-                    "name": "Palace CT з Mid",
-                    "img": f"{CDN}/998732b4-c384-4679-ba70-ae4277b34d9d/Screenshot%202023-11-04%2014-40-10.jpg",
-                    "url": "https://csnades.app/anubis/palace-ct-smoke-from-mid",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Закриває CT peak на A site — для A execute через апарти/mid."
-                },
-            ],
-            "Column (A site)": [
-                {
-                    "name": "Column з T-Spawn",
-                    "img": f"{CDN}/998732b4-c384-4679-ba70-ae4277b34d9d/Screenshot%202023-11-04%2014-40-10.jpg",
-                    "url": "https://csnades.app/anubis/column-smoke-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Smoke на колону — ключовий для А execute через воду."
-                },
-            ],
-            "Water (Bridge)": [
-                {
-                    "name": "Bridge з T-Spawn",
-                    "img": f"{CDN}/998732b4-c384-4679-ba70-ae4277b34d9d/Screenshot%202023-11-04%2014-40-10.jpg",
-                    "url": "https://csnades.app/anubis/bridge-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Відрізає CT від мосту під час водного переходу — перша гранатa раунду."
+                    'name': 'B Site Flash з CT Mid',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/2c41e459-582e-4f28-b651-7017a62aa34d/Screenshot%202023-10-13%2012-37-53.jpg',
+                    'url': 'https://csnades.app/dust2/b-site-flash-from-ct-mid',
+                    'throw': 'left jumpthrow',
+                    'side': 'CT',
+                    'desc': 'CT defensive flash — сліпить TT що виходять на B.',
                 },
             ],
         },
-        "flashes": {
-            "A site": [
+        'molotovs': {
+            'Car (Long)': [
                 {
-                    "name": "A Site Pop Flash з Water",
-                    "img": None,
-                    "url": "https://csnades.app/anubis/a-site-pop-flash-from-water",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Pop flash через стіну — вибухає над A site, сліпить CT і AWPer."
+                    'name': 'Car Molotov з Long',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/1ccc9d77-4b27-4477-a0ec-6f035a54d634/Screenshot%202023-10-13%2014-08-58.jpg',
+                    'url': 'https://csnades.app/dust2/car-molotov-from-long',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Перекриває car corner перед A execute.',
                 },
             ],
-            "B site": [
+            'A Site': [
                 {
-                    "name": "B Site Flash з Entrance",
-                    "img": None,
-                    "url": "https://csnades.app/anubis/b-site-flash-from-entrance",
-                    "throw": "right click", "side": "TT",
-                    "desc": "Сліпить CT на B site перед входом. Кидати правою кнопкою, вхід одразу після."
+                    'name': 'A Site Molotov з Short',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/32f0a149-4ba9-4233-a7a2-d36a3c6b1e97/Screenshot%202023-09-30%2016-01-37.jpg',
+                    'url': 'https://csnades.app/dust2/a-site-molotov-from-short',
+                    'throw': 'left jumpthrow',
+                    'side': 'TT',
+                    'desc': 'Перекриває default plant на A site.',
                 },
             ],
-        },
-        "molotovs": {
-            "B Default": [
+            'Mid Doors': [
                 {
-                    "name": "B Default Molotov з Entrance",
-                    "img": None,
-                    "url": "https://csnades.app/anubis/b-default-molotov-from-entrance",
-                    "throw": "left click", "side": "CT",
-                    "desc": "Defensive — перекриває B default plant. Для CT retake або антиплант."
+                    'name': 'Mid Doors Molotov з Lower Tunnel',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/56e30e2f-6a81-4b4b-876c-553a0dcbbbbf/Screenshot%202023-10-13%2013-28-37.jpg',
+                    'url': 'https://csnades.app/dust2/mid-doors-molotov-from-lower-tunnel',
+                    'throw': 'left click',
+                    'side': 'TT',
+                    'desc': 'Виганяє CT з mid doors позиції.',
                 },
             ],
-            "A Default": [
+            'B Site': [
                 {
-                    "name": "A Default Molotov з CT",
-                    "img": None,
-                    "url": "https://csnades.app/anubis/a-default-molotov-from-ct",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Defensive molotov — перекриває default A plant position."
-                },
-            ],
-        },
-    },
-
-    # ══════════════════════════════════════════════════════
-    # ANCIENT
-    # ══════════════════════════════════════════════════════
-    "Ancient": {
-        "smokes": {
-            "Donut (Mid)": [
-                {
-                    "name": "Donut з T-Spawn",
-                    "img": f"{CDN}/d5dfc817-ea6d-4823-ab8e-e863d5acf28f/Screenshot%202023-10-04%2018-03-09.jpg",
-                    "url": "https://csnades.app/ancient/donut-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Stand & walk jumpthrow. Init smoke для mid контролю."
-                },
-                {
-                    "name": "Donut з CT Drop",
-                    "img": f"{CDN}/d5dfc817-ea6d-4823-ab8e-e863d5acf28f/Screenshot%202023-10-04%2018-03-09.jpg",
-                    "url": "https://csnades.app/ancient/donut-smoke-from-ct-drop",
-                    "throw": "left click", "side": "CT",
-                    "desc": "CT defensive — відрізає Donut від Mid під час retake A."
-                },
-            ],
-            "CT (A site)": [
-                {
-                    "name": "CT з T-Spawn",
-                    "img": f"{CDN}/d5dfc817-ea6d-4823-ab8e-e863d5acf28f/Screenshot%202023-10-04%2018-03-09.jpg",
-                    "url": "https://csnades.app/ancient/ct-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Закриває CT peak на A site — для A execute з temple."
-                },
-            ],
-            "Pillar (A site)": [
-                {
-                    "name": "Pillar з Mid",
-                    "img": f"{CDN}/d5dfc817-ea6d-4823-ab8e-e863d5acf28f/Screenshot%202023-10-04%2018-03-09.jpg",
-                    "url": "https://csnades.app/ancient/pillar-smoke-from-mid",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Smoke на Pillar — кут за яким ховається AWPer CT. Ключовий для exec."
-                },
-            ],
-            "B Hall": [
-                {
-                    "name": "B Hall з T-Spawn",
-                    "img": f"{CDN}/d5dfc817-ea6d-4823-ab8e-e863d5acf28f/Screenshot%202023-10-04%2018-03-09.jpg",
-                    "url": "https://csnades.app/ancient/b-hall-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Smoke на B Hall для безпечного пуша B через hall."
-                },
-            ],
-            "CT Hall": [
-                {
-                    "name": "CT Hall з T-Spawn",
-                    "img": f"{CDN}/d5dfc817-ea6d-4823-ab8e-e863d5acf28f/Screenshot%202023-10-04%2018-03-09.jpg",
-                    "url": "https://csnades.app/ancient/ct-hall-smoke-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Відрізає CT hall від site — для anti-flank під час плантування."
-                },
-            ],
-        },
-        "flashes": {
-            "A site": [
-                {
-                    "name": "A Pop Flash з Temple",
-                    "img": None,
-                    "url": "https://csnades.app/ancient/a-pop-flash-from-temple",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Pop flash через стелю temple — вибухає над A, сліпить CT і Pillar AWPer."
-                },
-            ],
-            "B site": [
-                {
-                    "name": "B Flash з Hall",
-                    "img": None,
-                    "url": "https://csnades.app/ancient/b-flash-from-hall",
-                    "throw": "right click", "side": "TT",
-                    "desc": "Кидаєш правою кнопкою в кут — сліпить CT що holdять B entrance."
-                },
-            ],
-            "Mid": [
-                {
-                    "name": "Mid Donut Flash з T-Spawn",
-                    "img": None,
-                    "url": "https://csnades.app/ancient/mid-flash-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Сліпить CT що контролюють Donut перед входом в mid."
-                },
-            ],
-        },
-        "molotovs": {
-            "A Default": [
-                {
-                    "name": "A Default Molotov з CT",
-                    "img": None,
-                    "url": "https://csnades.app/ancient/a-default-molotov-from-ct",
-                    "throw": "left click", "side": "CT",
-                    "desc": "Defensive — перекриває default A plant position. Ключовий для retake A."
-                },
-            ],
-            "B Default": [
-                {
-                    "name": "B Default Molotov з Hall",
-                    "img": None,
-                    "url": "https://csnades.app/ancient/b-default-molotov-from-hall",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Defensive molotov — виганяє TT з default B plant."
-                },
-            ],
-            "Pillar": [
-                {
-                    "name": "Pillar Molotov з T-Spawn",
-                    "img": None,
-                    "url": "https://csnades.app/ancient/pillar-molotov-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Виганяє CT з Pillar позиції — часто там стоїть AWPer."
-                },
-            ],
-        },
-    },
-
-    # ══════════════════════════════════════════════════════
-    # VERTIGO
-    # ══════════════════════════════════════════════════════
-    "Vertigo": {
-        "smokes": {
-            "A Site": [
-                {
-                    "name": "A Site з Ramp",
-                    "img": f"{CDN}/1d705305-cf12-4562-baef-f1079955a15a/Screenshot%202023-12-11%2000-36-56.jpg",
-                    "url": "https://csnades.app/vertigo/a-site-smoke-from-ramp-3",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Smoke для A execute. Цілься в стик між балками (shift), W трохи вперед + jumpthrow."
-                },
-                {
-                    "name": "A Site Mid Smoke з T-Spawn",
-                    "img": f"{CDN}/1d705305-cf12-4562-baef-f1079955a15a/Screenshot%202023-12-11%2000-36-56.jpg",
-                    "url": "https://csnades.app/vertigo/a-site-mid-smoke-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Альтернативний A smoke — закриває mid area сайту."
-                },
-            ],
-            "CT (A side)": [
-                {
-                    "name": "CT Smoke з Mid",
-                    "img": f"{CDN}/1d705305-cf12-4562-baef-f1079955a15a/Screenshot%202023-12-11%2000-36-56.jpg",
-                    "url": "https://csnades.app/vertigo/ct-smoke-from-mid",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Закриває CT peak — для execute на A після mid контролю."
-                },
-            ],
-            "Scaffold (B)": [
-                {
-                    "name": "Scaffold з T-Spawn",
-                    "img": f"{CDN}/1d705305-cf12-4562-baef-f1079955a15a/Screenshot%202023-12-11%2000-36-56.jpg",
-                    "url": "https://csnades.app/vertigo/scaffold-smoke-from-t-spawn",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Smoke на Scaffold — закриває CT peak на B site."
-                },
-            ],
-            "Elevator (B)": [
-                {
-                    "name": "Elevator Smoke з T-Spawn",
-                    "img": f"{CDN}/1d705305-cf12-4562-baef-f1079955a15a/Screenshot%202023-12-11%2000-36-56.jpg",
-                    "url": "https://csnades.app/vertigo/elevator-smoke-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Smoke на Elevator shaft — для execute B з правої сторони."
-                },
-            ],
-            "Mid": [
-                {
-                    "name": "Mid Smoke з T-Ramp",
-                    "img": f"{CDN}/1d705305-cf12-4562-baef-f1079955a15a/Screenshot%202023-12-11%2000-36-56.jpg",
-                    "url": "https://csnades.app/vertigo/mid-smoke-from-t-ramp",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Smoke на mid — для безпечного виходу і ротації між сайтами."
-                },
-            ],
-        },
-        "flashes": {
-            "A Ramp": [
-                {
-                    "name": "A Ramp Flash з T-Spawn",
-                    "img": None,
-                    "url": "https://csnades.app/vertigo/a-ramp-flash-from-t-spawn",
-                    "throw": "right click", "side": "TT",
-                    "desc": "Pop flash перед виходом на A ramp — сліпить CT що holdять зверху."
-                },
-            ],
-            "B Site": [
-                {
-                    "name": "B Pop Flash з Catwalk",
-                    "img": None,
-                    "url": "https://csnades.app/vertigo/b-pop-flash-from-catwalk",
-                    "throw": "left jumpthrow", "side": "TT",
-                    "desc": "Кидаєш через стелю — вибухає над B site, сліпить Scaffold і CT."
-                },
-            ],
-        },
-        "molotovs": {
-            "A Default": [
-                {
-                    "name": "A Default Molotov з CT",
-                    "img": None,
-                    "url": "https://csnades.app/vertigo/a-default-molotov-from-ct",
-                    "throw": "left click", "side": "CT",
-                    "desc": "Defensive — перекриває default A plant position."
-                },
-            ],
-            "B Scaff": [
-                {
-                    "name": "Scaffold Molotov з CT",
-                    "img": None,
-                    "url": "https://csnades.app/vertigo/scaffold-molotov-from-ct",
-                    "throw": "left jumpthrow", "side": "CT",
-                    "desc": "Виганяє TT з Scaffold під час B retake."
-                },
-            ],
-            "A Ramp": [
-                {
-                    "name": "A Ramp Molotov з T-Spawn",
-                    "img": None,
-                    "url": "https://csnades.app/vertigo/a-ramp-molotov-from-t-spawn",
-                    "throw": "left click", "side": "TT",
-                    "desc": "Slow molotov на A ramp — для anti-rush або часового виграшу."
+                    'name': 'B Site Molotov з CT Mid',
+                    'img': 'https://d3pnc3zdmk6lr.cloudfront.net/uploads/9ee25c87-6213-47ed-a219-c1ee42d0a629/Screenshot%202023-10-13%2014-24-34.jpg',
+                    'url': 'https://csnades.app/dust2/b-site-molotov-from-ct-mid',
+                    'throw': 'left jumpthrow',
+                    'side': 'CT',
+                    'desc': 'Defensive — виганяє TT з B default під час retake.',
                 },
             ],
         },
     },
 }
+
+EXTRA_MAPS_DISABLED = {
+    # ══════════════════════════════════════════════════════
+    # TRAIN
+    # ══════════════════════════════════════════════════════
+    "Train": {
+        "smokes": {
+            "Ivy (B site)": [
+                {
+                    "name": "Ivy з T-Spawn",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/91f5b560-f5d4-4e7c-9ddc-af97a2798de7/Screenshot%202023-09-10%2020-03-40_small.jpg",
+                    "url": "https://csnades.app/train/ivy-smoke-from-t-spawn",
+                    "throw": "left jumpthrow", "side": "TT",
+                    "desc": "Закриває Ivy — головна позиція CT на B site. Для B execute."
+                },
+            ],
+            "Ladder Room": [
+                {
+                    "name": "Ladder Room з Upper B",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/91f5b560-f5d4-4e7c-9ddc-af97a2798de7/Screenshot%202023-09-10%2020-03-40_small.jpg",
+                    "url": "https://csnades.app/train/ladder-room-smoke",
+                    "throw": "left click", "side": "TT",
+                    "desc": "Відрізає Ladder Room від B site при execute."
+                },
+            ],
+            "CT (A site)": [
+                {
+                    "name": "CT з T-Spawn (A exec)",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/91f5b560-f5d4-4e7c-9ddc-af97a2798de7/Screenshot%202023-09-10%2020-03-40_small.jpg",
+                    "url": "https://csnades.app/train/ct-smoke-a-site",
+                    "throw": "left jumpthrow", "side": "TT",
+                    "desc": "Блокує CT при A execute. Поєднуй з Connector smoke."
+                },
+            ],
+            "Connector": [
+                {
+                    "name": "Connector з T Mid",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/91f5b560-f5d4-4e7c-9ddc-af97a2798de7/Screenshot%202023-09-10%2020-03-40_small.jpg",
+                    "url": "https://csnades.app/train/connector-smoke",
+                    "throw": "left jumpthrow", "side": "TT",
+                    "desc": "Smoke на Connector — для безпечного виходу з T Mid на A."
+                },
+            ],
+        },
+        "flashes": {
+            "B Site": [
+                {
+                    "name": "B Pop Flash з T-Spawn",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/a300db8e-5574-423d-91f2-a6d25455bb47/Screenshot%202023-09-09%2020-23-41_small.jpg",
+                    "url": "https://csnades.app/train/b-pop-flash",
+                    "throw": "right click", "side": "TT",
+                    "desc": "Сліпить CT на B site при вході. Кидай і одразу рухайся."
+                },
+            ],
+            "A Site": [
+                {
+                    "name": "A Pop Flash з T-Ramp",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/a300db8e-5574-423d-91f2-a6d25455bb47/Screenshot%202023-09-09%2020-23-41_small.jpg",
+                    "url": "https://csnades.app/train/a-pop-flash",
+                    "throw": "left jumpthrow", "side": "TT",
+                    "desc": "Вибухає над A site, сліпить CT і Pop Dog позицію."
+                },
+            ],
+        },
+        "molotovs": {
+            "Ivy (B site)": [
+                {
+                    "name": "Ivy Molotov з Upper B",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/2d62aea5-ae78-4d8c-aaff-7b684ed6af2c/Screenshot%202023-11-14%2011-11-29_small.jpg",
+                    "url": "https://csnades.app/train/ivy-molotov",
+                    "throw": "left click", "side": "CT",
+                    "desc": "Defensive — виганяє TT з Ivy під час B retake."
+                },
+            ],
+            "A Default": [
+                {
+                    "name": "A Default Molotov з CT",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/2d62aea5-ae78-4d8c-aaff-7b684ed6af2c/Screenshot%202023-11-14%2011-11-29_small.jpg",
+                    "url": "https://csnades.app/train/a-default-molotov",
+                    "throw": "left jumpthrow", "side": "CT",
+                    "desc": "Блокує A default plant під час retake або holdу."
+                },
+            ],
+        },
+    },
+
+    # ══════════════════════════════════════════════════════
+    # OVERPASS
+    # ══════════════════════════════════════════════════════
+    "Overpass": {
+        "smokes": {
+            "Short (B site)": [
+                {
+                    "name": "Short з T-Spawn",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/91f5b560-f5d4-4e7c-9ddc-af97a2798de7/Screenshot%202023-09-10%2020-03-40_small.jpg",
+                    "url": "https://csnades.app/overpass/short-smoke-from-t-spawn",
+                    "throw": "left jumpthrow", "side": "TT",
+                    "desc": "Закриває Short — для безпечного B execute через Fountain."
+                },
+                {
+                    "name": "Short з Fountain",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/91f5b560-f5d4-4e7c-9ddc-af97a2798de7/Screenshot%202023-09-10%2020-03-40_small.jpg",
+                    "url": "https://csnades.app/overpass/short-smoke-from-fountain",
+                    "throw": "left click", "side": "TT",
+                    "desc": "Якщо вже дістався Fountain — кидаєш звідти для підтримки."
+                },
+            ],
+            "CT (B site)": [
+                {
+                    "name": "CT Smoke з Fountain",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/91f5b560-f5d4-4e7c-9ddc-af97a2798de7/Screenshot%202023-09-10%2020-03-40_small.jpg",
+                    "url": "https://csnades.app/overpass/ct-smoke-b-site",
+                    "throw": "left jumpthrow", "side": "TT",
+                    "desc": "Відрізає CT peak при B execute. Критичний смок для сайту."
+                },
+            ],
+            "Stairs (A site)": [
+                {
+                    "name": "Stairs з T-Spawn",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/91f5b560-f5d4-4e7c-9ddc-af97a2798de7/Screenshot%202023-09-10%2020-03-40_small.jpg",
+                    "url": "https://csnades.app/overpass/stairs-smoke-a-site",
+                    "throw": "left jumpthrow", "side": "TT",
+                    "desc": "Smoke на Stairs для A execute — відрізає CT позицію зверху."
+                },
+            ],
+            "Canal": [
+                {
+                    "name": "Canal Smoke з T-Spawn",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/91f5b560-f5d4-4e7c-9ddc-af97a2798de7/Screenshot%202023-09-10%2020-03-40_small.jpg",
+                    "url": "https://csnades.app/overpass/canal-smoke",
+                    "throw": "left click", "side": "CT",
+                    "desc": "Defensive — відрізає Canal від B при CT holdі."
+                },
+            ],
+        },
+        "flashes": {
+            "B Site": [
+                {
+                    "name": "B Pop Flash з Fountain",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/a300db8e-5574-423d-91f2-a6d25455bb47/Screenshot%202023-09-09%2020-23-41_small.jpg",
+                    "url": "https://csnades.app/overpass/b-pop-flash",
+                    "throw": "right click", "side": "TT",
+                    "desc": "Правою кнопкою над Short — вибухає над B site при вході."
+                },
+            ],
+            "Short": [
+                {
+                    "name": "Short Flash з T-Spawn",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/a300db8e-5574-423d-91f2-a6d25455bb47/Screenshot%202023-09-09%2020-23-41_small.jpg",
+                    "url": "https://csnades.app/overpass/short-flash",
+                    "throw": "left jumpthrow", "side": "TT",
+                    "desc": "Сліпить CT що holdять Short під час B execute."
+                },
+            ],
+        },
+        "molotovs": {
+            "B Default": [
+                {
+                    "name": "B Default Molotov з Canal",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/2d62aea5-ae78-4d8c-aaff-7b684ed6af2c/Screenshot%202023-11-14%2011-11-29_small.jpg",
+                    "url": "https://csnades.app/overpass/b-default-molotov",
+                    "throw": "left click", "side": "CT",
+                    "desc": "Defensive — не дає TT плантувати в B default."
+                },
+            ],
+            "Short (B)": [
+                {
+                    "name": "Short Molotov з Fountain",
+                    "img": "https://d3pnc3zdmk6lr.cloudfront.net/uploads/2d62aea5-ae78-4d8c-aaff-7b684ed6af2c/Screenshot%202023-11-14%2011-11-29_small.jpg",
+                    "url": "https://csnades.app/overpass/short-molotov",
+                    "throw": "left jumpthrow", "side": "TT",
+                    "desc": "Виганяє CT з Short під час B execute."
+                },
+            ],
+        },
+    },
+}
+
 
 MAPS = list(NADES.keys())
 UTIL_KEYS = ["smokes", "flashes", "molotovs"]
@@ -1021,38 +693,54 @@ CFG_Q = {
 
 TEXTS = {
     "uk": {
-        "welcome": "🎮 Привіт, <b>{name}</b>!\nCS2 Helper — розкиди і CFG.\nВибери розділ 👇",
+        "welcome": "🎮 Привіт, <b>{name}</b>!\nCS2 Helper v4.0 — розкиди, CFG, обране.\nВибери розділ 👇",
         "btn_lineups": "🗺 Розкид", "btn_cfg": "🎮 Мій CFG", "btn_settings": "⚙️ Налаштування",
+        "btn_favorites": "⭐ Обране", "btn_search": "🔎 Пошук", "btn_buy": "💰 Закуп",
         "choose_map": "🗺 Вибери карту:", "choose_util": "Вибери тип для <b>{map}</b>:",
         "choose_target": "Куди летить граната на <b>{map}</b> ({util})?",
         "no_nades": "😔 Поки немає розкидів. Незабаром!",
         "nade_caption": "🎯 <b>{name}</b>\n🗺 {map} — {util}\n\n⚙️ Кидок: <b>{throw}</b>\n👤 Сторона: <b>{side}</b>\n\n💬 {desc}\n\n🔗 <a href='{url}'>csnades.app</a>",
         "cfg_empty": "😔 Немає CFG.\nНатисни ✏️ щоб заповнити.", "cfg_title": "🎮 <b>Твій CFG:</b>\n\n",
         "btn_fill_cfg": "✏️ Заповнити", "btn_edit_cfg": "✏️ Редагувати", "btn_clear_cfg": "🗑 Очистити",
+        "btn_export_cfg": "📁 Скачати .cfg",
         "cfg_cleared": "✅ CFG очищено.", "fill_start": "Заповнюємо CFG!\n\nПропустити поле — напиши <code>-</code>",
         "cfg_saved": "✅ CFG збережено!", "settings_title": "⚙️ <b>Налаштування</b>",
         "btn_lang": "🌐 Мова: UA", "btn_about": "ℹ️ Про бота", "choose_lang": "Вибери мову:",
         "lang_changed": "✅ Мову змінено",
-        "about": "🎮 <b>CS2 Helper Bot</b>\n\nВерсія: 3.0\n• 🗺 Розкиди для 7 карт (смоки, флешки, молоки)\n• 📍 Меню позицій куди летить граната\n• ⬅️➡️ Навігація між варіантами\n• 🎮 CFG зберігання\n• 🌐 UA/EN\n\nДані: csnades.app ❤️",
+        "about": "🎮 <b>CS2 Helper Bot v4.0</b>\n\n• 🗺 Розкиди для 9 карт (смоки, флешки, молоки)\n• ⭐ Обране — збережені розкиди\n• 🔎 Пошук по назві позиції\n• 📁 Генератор CFG файлу\n• 💰 Калькулятор закупу\n• 🌐 UA/EN\n\nДані: csnades.app ❤️",
         "btn_back": "◀️ Назад",
-        "btn_buy": "💰 Закуп",
+        "fav_empty": "⭐ Ти ще не додав жодного розкиду в обране.\n\nЗнайди розкид і натисни <b>⭐ В обране</b>.",
+        "fav_title": "⭐ <b>Твоє обране ({count}):</b>\n\n",
+        "fav_item": "{i}. {name}\n   🗺 {map} · {util} · {target}\n",
+        "search_prompt": "🔎 Введи назву позиції або локації для пошуку:\n\nПриклади: <code>window</code>, <code>connector</code>, <code>banana</code>, <code>b site</code>",
+        "search_no_results": "😔 Нічого не знайдено за запитом <b>{query}</b>.\n\nСпробуй: <code>window</code>, <code>short</code>, <code>ct</code>",
+        "search_results": "🔎 Результати за <b>{query}</b> ({count}):\n\nВибери розкид:",
+        "stats_title": "📊 <b>Твоя статистика:</b>\n\n👁 Переглянуто розкидів: <b>{views}</b>\n⭐ В обраному: <b>{favs}</b>\n🗺 Карт досліджено: <b>{maps}</b>",
     },
     "en": {
-        "welcome": "🎮 Hello, <b>{name}</b>!\nCS2 Helper — lineups and CFG.\nChoose a section 👇",
+        "welcome": "🎮 Hello, <b>{name}</b>!\nCS2 Helper v4.0 — lineups, CFG, favorites.\nChoose a section 👇",
         "btn_lineups": "🗺 Lineups", "btn_cfg": "🎮 My CFG", "btn_settings": "⚙️ Settings",
+        "btn_favorites": "⭐ Favorites", "btn_search": "🔎 Search", "btn_buy": "💰 Buy",
         "choose_map": "🗺 Choose map:", "choose_util": "Choose type for <b>{map}</b>:",
         "choose_target": "Where does the nade land on <b>{map}</b> ({util})?",
         "no_nades": "😔 No lineups yet. Coming soon!",
         "nade_caption": "🎯 <b>{name}</b>\n🗺 {map} — {util}\n\n⚙️ Throw: <b>{throw}</b>\n👤 Side: <b>{side}</b>\n\n💬 {desc}\n\n🔗 <a href='{url}'>csnades.app</a>",
         "cfg_empty": "😔 No CFG saved.\nPress ✏️ to fill it.", "cfg_title": "🎮 <b>Your CFG:</b>\n\n",
         "btn_fill_cfg": "✏️ Fill", "btn_edit_cfg": "✏️ Edit", "btn_clear_cfg": "🗑 Clear",
+        "btn_export_cfg": "📁 Download .cfg",
         "cfg_cleared": "✅ CFG cleared.", "fill_start": "Let's fill your CFG!\n\nSkip a field — type <code>-</code>",
         "cfg_saved": "✅ CFG saved!", "settings_title": "⚙️ <b>Settings</b>",
         "btn_lang": "🌐 Language: EN", "btn_about": "ℹ️ About", "choose_lang": "Choose language:",
         "lang_changed": "✅ Language changed",
-        "about": "🎮 <b>CS2 Helper Bot</b>\n\nVersion: 3.0\n• 🗺 Lineups for 7 maps (smokes, flashes, molotovs)\n• 📍 Target position menu\n• ⬅️➡️ Variant navigation\n• 🎮 CFG storage\n• 🌐 UA/EN\n\nData: csnades.app ❤️",
+        "about": "🎮 <b>CS2 Helper Bot v4.0</b>\n\n• 🗺 Lineups for 9 maps (smokes, flashes, molotovs)\n• ⭐ Favorites — saved lineups\n• 🔎 Search by position name\n• 📁 CFG file generator\n• 💰 Buy calculator\n• 🌐 UA/EN\n\nData: csnades.app ❤️",
         "btn_back": "◀️ Back",
-        "btn_buy": "💰 Buy",
+        "fav_empty": "⭐ You haven't saved any lineups yet.\n\nFind a lineup and tap <b>⭐ Favorite</b>.",
+        "fav_title": "⭐ <b>Your favorites ({count}):</b>\n\n",
+        "fav_item": "{i}. {name}\n   🗺 {map} · {util} · {target}\n",
+        "search_prompt": "🔎 Enter a position or location to search:\n\nExamples: <code>window</code>, <code>connector</code>, <code>banana</code>, <code>b site</code>",
+        "search_no_results": "😔 Nothing found for <b>{query}</b>.\n\nTry: <code>window</code>, <code>short</code>, <code>ct</code>",
+        "search_results": "🔎 Results for <b>{query}</b> ({count}):\n\nChoose a lineup:",
+        "stats_title": "📊 <b>Your stats:</b>\n\n👁 Lineups viewed: <b>{views}</b>\n⭐ In favorites: <b>{favs}</b>\n🗺 Maps explored: <b>{maps}</b>",
     }
 }
 
@@ -1069,6 +757,10 @@ def main_kb(uid):
         ],
         [
             KeyboardButton(text=t(uid, "btn_buy")),
+            KeyboardButton(text=t(uid, "btn_favorites")),
+        ],
+        [
+            KeyboardButton(text=t(uid, "btn_search")),
             KeyboardButton(text=t(uid, "btn_settings")),
         ],
     ], resize_keyboard=True, is_persistent=True)
@@ -1118,6 +810,7 @@ def cfg_kb(uid, has_cfg):
     if has_cfg:
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=t(uid, "btn_edit_cfg"), callback_data="fill_cfg")],
+            [InlineKeyboardButton(text=t(uid, "btn_export_cfg"), callback_data="export_cfg")],
             [InlineKeyboardButton(text=t(uid, "btn_clear_cfg"), callback_data="clear_cfg")],
         ])
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -1247,11 +940,38 @@ async def show_nade_for_target(cb: CallbackQuery):
 
     nade = nades[page]
     util_label = f"{UTIL_EMOJI[util_key]} {labels[util_key]}"
+
+    # Трекінг статистики
+    if uid not in user_stats:
+        user_stats[uid] = {"views": 0, "maps": set()}
+    user_stats[uid]["views"] += 1
+    user_stats[uid]["maps"].add(map_name)
+
     caption = t(uid, "nade_caption",
                 name=nade["name"], map=map_name, util=util_label,
                 throw=nade["throw"], side=nade["side"],
                 desc=nade["desc"], url=nade["url"])
     kb = nade_nav_kb(uid, map_name, util_key, enc_target, page, len(nades))
+
+    # Кнопка відео/посилання
+    kb.inline_keyboard.insert(0, [
+        InlineKeyboardButton(text="📹 Відкрити на csnades.app", url=nade["url"])
+    ])
+
+    # Кнопка обраного
+    fav_key = f"{map_name}_{util_key}_{enc_target}_{page}"
+    user_favs = favorites.get(uid, [])
+    already_fav = any(
+        f"{f['map']}_{f['util']}_{f['enc_target']}_{f['page']}" == fav_key
+        for f in user_favs
+    )
+    fav_btn_text = "✅ В обраному" if already_fav else "⭐ В обране"
+    kb.inline_keyboard.insert(1, [
+        InlineKeyboardButton(
+            text=fav_btn_text,
+            callback_data=f"fav_{map_name}_{util_key}_{enc_target}_{page}"
+        )
+    ])
 
     chat_id = cb.message.chat.id
     try:
@@ -1259,7 +979,7 @@ async def show_nade_for_target(cb: CallbackQuery):
     except Exception:
         pass
 
-    img = nade.get("img")
+    img = nade.get("img") or DEFAULT_IMG.get(util_key)
     if img:
         try:
             await bot.send_photo(chat_id, photo=img, caption=caption, reply_markup=kb, parse_mode="HTML")
@@ -1269,6 +989,37 @@ async def show_nade_for_target(cb: CallbackQuery):
         await bot.send_message(chat_id, caption, reply_markup=kb, parse_mode="HTML")
     await cb.answer()
 
+@dp.callback_query(F.data.startswith("fav_"))
+async def add_favorite(cb: CallbackQuery):
+    uid = cb.from_user.id
+    parts = cb.data.split("_", 4)
+    map_name = parts[1]
+    util_key = parts[2]
+    enc_target = parts[3]
+    page = int(parts[4])
+    target = decode_target(enc_target)
+
+    if uid not in favorites:
+        favorites[uid] = []
+
+    fav_key = f"{map_name}_{util_key}_{enc_target}_{page}"
+    existing = next(
+        (i for i, f in enumerate(favorites[uid])
+         if f"{f['map']}_{f['util']}_{f['enc_target']}_{f['page']}" == fav_key),
+        None
+    )
+    if existing is not None:
+        favorites[uid].pop(existing)
+        await cb.answer("❌ Видалено з обраного")
+    else:
+        nades_list = NADES.get(map_name, {}).get(util_key, {}).get(target, [])
+        name = nades_list[page]["name"] if nades_list else "?"
+        favorites[uid].append({
+            "map": map_name, "util": util_key,
+            "enc_target": enc_target, "page": page, "name": name
+        })
+        await cb.answer("⭐ Додано в обране")
+    
 @dp.callback_query(F.data == "noop")
 async def noop(cb: CallbackQuery):
     await cb.answer()
@@ -1552,9 +1303,165 @@ async def about(cb: CallbackQuery):
     await cb.message.answer(t(uid, "about"), parse_mode="HTML")
     await cb.answer()
 
+# ── CFG Export ───────────────────────────────────────────────────────────────
+@dp.callback_query(F.data == "export_cfg")
+async def export_cfg(cb: CallbackQuery):
+    uid = cb.from_user.id
+    cfg = user_cfg.get(uid)
+    if not cfg:
+        await cb.answer("Немає CFG", show_alert=True)
+        return
+
+    lines = [
+        "// Generated by CS2 Helper Bot",
+        "",
+        f"sensitivity {cfg.get('sens', '—')}",
+        f"zoom_sensitivity_ratio_mouse {cfg.get('zoom_sens', '—')}",
+        f"viewmodel_fov {cfg.get('fov', '—')}",
+    ]
+    vm = cfg.get("viewmodel", "—")
+    if vm not in ("—", "-"):
+        presets = {"desktop": 1, "couch": 2, "classic": 3}
+        vm_num = presets.get(vm.lower(), vm)
+        lines.append(f"viewmodel_presetpos {vm_num}")
+
+    res = cfg.get("resolution", "—")
+    if "x" in res.lower():
+        lines.append(f"// resolution: {res}")
+
+    vol = cfg.get("volume", "—")
+    if vol not in ("—", "-"):
+        lines.append(f"volume {vol}")
+
+    binds = cfg.get("binds", "—")
+    if binds not in ("—", "-"):
+        lines.append("")
+        lines.append("// Binds")
+        for bind in binds.split(";"):
+            b = bind.strip()
+            if b:
+                lines.append(b)
+
+    cfg_text = "\n".join(lines)
+    from io import BytesIO
+    from aiogram.types import BufferedInputFile
+    buf = BytesIO(cfg_text.encode("utf-8"))
+    file = BufferedInputFile(buf.read(), filename="my_cs2_config.cfg")
+    await cb.message.answer_document(file, caption="🎮 Твій CS2 config файл готовий!")
+    await cb.answer()
+
+
+# ── Обране ───────────────────────────────────────────────────────────────────
+def favorites_kb(uid):
+    user_favs = favorites.get(uid, [])
+    rows = []
+    for i, f in enumerate(user_favs):
+        target = decode_target(f["enc_target"])
+        label = f"📍 {f['map']} · {target}"
+        rows.append([InlineKeyboardButton(
+            text=label,
+            callback_data=f"tgt_{f['map']}_{f['util']}_{f['enc_target']}_{f['page']}"
+        )])
+        rows.append([InlineKeyboardButton(
+            text="❌ Видалити",
+            callback_data=f"fav_{f['map']}_{f['util']}_{f['enc_target']}_{f['page']}_del"
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+@dp.message(F.text.in_(["⭐ Обране", "⭐ Favorites"]))
+async def section_favorites(message: Message, state: FSMContext):
+    await state.clear()
+    uid = message.from_user.id
+    user_favs = favorites.get(uid, [])
+    if not user_favs:
+        await message.answer(t(uid, "fav_empty"), parse_mode="HTML")
+        return
+    text = t(uid, "fav_title", count=len(user_favs))
+    for i, f in enumerate(user_favs, 1):
+        target = decode_target(f["enc_target"])
+        util_label = UTIL_UA.get(f["util"], f["util"]) if user_lang.get(uid, "uk") == "uk" else UTIL_EN.get(f["util"], f["util"])
+        text += t(uid, "fav_item", i=i, name=f.get("name", "?"), map=f["map"], util=util_label, target=target)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"📍 {f['map']} · {decode_target(f['enc_target'])}",
+            callback_data=f"tgt_{f['map']}_{f['util']}_{f['enc_target']}_{f['page']}"
+        )] for f in user_favs
+    ])
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+# ── Пошук ────────────────────────────────────────────────────────────────────
+def do_search(query: str):
+    q = query.lower().strip()
+    results = []
+    for map_name, utils in NADES.items():
+        for util_key, targets in utils.items():
+            for target, nades_list in targets.items():
+                if q in target.lower() or q in map_name.lower():
+                    for page, nade in enumerate(nades_list):
+                        if q in target.lower() or q in nade["name"].lower() or q in map_name.lower():
+                            enc = target.replace(" ", "~").replace("(", "LB").replace(")", "RB").replace("/", "SL")
+                            results.append({
+                                "label": f"🗺 {map_name} · {target}",
+                                "cb": f"tgt_{map_name}_{util_key}_{enc}_{page}",
+                                "name": nade["name"],
+                            })
+    return results[:20]  # максимум 20 результатів
+
+@dp.message(F.text.in_(["🔎 Пошук", "🔎 Search"]))
+async def section_search(message: Message, state: FSMContext):
+    await state.clear()
+    uid = message.from_user.id
+    await message.answer(t(uid, "search_prompt"), parse_mode="HTML")
+    await state.set_state(SearchStates.waiting)
+
+@dp.message(Command("search"))
+async def cmd_search(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer(t(uid, "search_prompt"), parse_mode="HTML")
+        await state.set_state(SearchStates.waiting)
+        return
+    query = args[1]
+    await _do_search_reply(message, uid, query)
+
+@dp.message(SearchStates.waiting)
+async def search_input(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    query = message.text.strip()
+    await state.clear()
+    await _do_search_reply(message, uid, query)
+
+async def _do_search_reply(message: Message, uid: int, query: str):
+    results = do_search(query)
+    if not results:
+        await message.answer(t(uid, "search_no_results", query=query), parse_mode="HTML")
+        return
+    text = t(uid, "search_results", query=query, count=len(results))
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=r["label"], callback_data=r["cb"])]
+        for r in results
+    ])
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+# ── Статистика ───────────────────────────────────────────────────────────────
+@dp.message(Command("stats"))
+async def cmd_stats(message: Message):
+    uid = message.from_user.id
+    stats = user_stats.get(uid, {"views": 0, "maps": set()})
+    favs_count = len(favorites.get(uid, []))
+    maps_count = len(stats.get("maps", set()))
+    await message.answer(
+        t(uid, "stats_title", views=stats["views"], favs=favs_count, maps=maps_count),
+        parse_mode="HTML"
+    )
+
+
 # ── Запуск ───────────────────────────────────────────────────────────────────
 async def main():
-    print("✅ CS2 Bot v3.0 started!")
+    print("✅ CS2 Bot v4.0 started!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
