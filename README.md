@@ -4,7 +4,7 @@ Telegram-бот для гравців CS2. Розкиди гранат, реко
 
 ## Функції
 
-- 🗺 Розкиди (smokes, flashes, molotovs) для 7 карт: Mirage, Inferno, Dust2, Nuke, Anubis, Ancient, Vertigo
+- 🗺 Розкиди (smokes, flashes, molotovs) для 3 карт: Mirage, Inferno, Dust2
 - 📍 Навігація по позиціях і варіантах
 - 💰 Рекомендації закупу залежно від ситуації і грошей
 - 🎮 Збереження особистого CFG (sens, FOV, viewmodel та ін.)
@@ -33,7 +33,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-```env
+```
 BOT_TOKEN=your_telegram_bot_token_here
 ```
 
@@ -53,6 +53,8 @@ cs2-helper-bot/
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
+├── Dockerfile
+├── fly.toml
 └── README.md
 ```
 
